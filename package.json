@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "npm run build && rm -rf /tmp/cloud-draw-deploy && cp -r dist /tmp/cloud-draw-deploy && cd /tmp/cloud-draw-deploy && vercel --prod --yes"
+    "deploy": "git add -A && git commit -m 'update' && git push"
   },
   "dependencies": {
     "lucide-react": "^1.7.0",
