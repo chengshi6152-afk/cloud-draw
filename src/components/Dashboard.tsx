@@ -1,10 +1,81 @@
-import { Activity, FileText, Download, Share2, Bell } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Activity, FileText, Download, Share2, Bell, Loader } from 'lucide-react'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 import ReportHeader from './ReportHeader'
 import TrendChart from './TrendChart'
 import LabResults from './LabResults'
 import ChatInterface from './ChatInterface'
 
 export default function Dashboard() {
+  const reportRef = useRef<HTMLDivElement>(null)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportPDF = async () => {
+    if (!reportRef.current || exporting) return
+    setExporting(true)
+
+    try {
+      const element = reportRef.current
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#f0f4f8',
+        logging: false,
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
+      })
+
+      // A4 dimensions in mm
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+
+      const imgW = canvas.width
+      const imgH = canvas.height
+      const ratio = imgW / imgH
+
+      // Scale image to fit page width, then paginate if tall
+      const pdfImgW = pageW
+      const pdfImgH = pageW / ratio
+
+      let yPosition = 0
+      let remainingH = pdfImgH
+
+      while (remainingH > 0) {
+        if (yPosition > 0) pdf.addPage()
+
+        // Clip to one page height at a time
+        const sliceH = Math.min(remainingH, pageH)
+        const srcY = (yPosition / pdfImgH) * imgH
+        const srcH = (sliceH / pdfImgH) * imgH
+
+        // Create a slice canvas
+        const sliceCanvas = document.createElement('canvas')
+        sliceCanvas.width = imgW
+        sliceCanvas.height = srcH
+        const ctx = sliceCanvas.getContext('2d')!
+        ctx.drawImage(canvas, 0, srcY, imgW, srcH, 0, 0, imgW, srcH)
+
+        const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.95)
+        const slicePdfH = (srcH / imgW) * pageW
+
+        pdf.addImage(sliceData, 'JPEG', 0, 0, pdfImgW, slicePdfH)
+
+        yPosition += pageH
+        remainingH -= pageH
+      }
+
+      pdf.save(`云采健康报告_张伟_2026-03-28.pdf`)
+    } catch (err) {
+      console.error('PDF export failed:', err)
+      alert('导出失败，请重试')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div style={styles.root}>
       {/* Top Nav */}
@@ -24,9 +95,19 @@ export default function Dashboard() {
           <button style={styles.navBtn}>
             <Share2 size={15} />
           </button>
-          <button style={styles.navBtnPrimary}>
-            <Download size={14} />
-            导出 PDF
+          <button
+            onClick={handleExportPDF}
+            disabled={exporting}
+            style={{
+              ...styles.navBtnPrimary,
+              opacity: exporting ? 0.75 : 1,
+              cursor: exporting ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exporting
+              ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> 导出中…</>
+              : <><Download size={14} /> 导出 PDF</>
+            }
           </button>
         </div>
       </nav>
@@ -43,25 +124,20 @@ export default function Dashboard() {
 
       {/* Main layout */}
       <div style={styles.mainLayout}>
-        {/* Left column */}
-        <div style={styles.leftCol}>
-          {/* Section 1: Report Header */}
+        {/* Left column — this is what gets exported */}
+        <div ref={reportRef} style={styles.leftCol}>
           <section>
             <ReportHeader />
           </section>
-
-          {/* Section 2: Trend Chart */}
           <section>
             <TrendChart />
           </section>
-
-          {/* Section 3: Lab Results */}
           <section>
             <LabResults />
           </section>
         </div>
 
-        {/* Right column: Chat */}
+        {/* Right column: Chat (excluded from PDF) */}
         <div style={styles.rightCol}>
           <div style={styles.chatSticky}>
             <ChatInterface />
@@ -73,6 +149,10 @@ export default function Dashboard() {
         <span>© 2026 云采数字健康平台 · CloudDraw Health</span>
         <span>报告编号 RPT-2026-0328-001 · 保密文件</span>
       </footer>
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   )
 }
@@ -137,7 +217,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ffffff',
     fontSize: '13px',
     fontWeight: '500',
-    cursor: 'pointer',
     transition: 'all 0.15s',
     boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
   },
